@@ -25,6 +25,8 @@ contains the answer.
 **Why this target:**
 <!-- e.g. "One of my questions is about a topic only two documents mention, so
      I expect that one to be hard." -->
+     i asked a specific question about a small farm shop located in cory vale,
+     that only appears in two documents about the products being sold. the model could find itself being distracted my searching for keywords like market that shows up in nine other documents including documents that speak on other food selling places. The model must correctly asses the chunk that provides the specific information needed. So this question can be a hard miss due to similarities or mentionings of the same key words within other docs.
 
 ---
 

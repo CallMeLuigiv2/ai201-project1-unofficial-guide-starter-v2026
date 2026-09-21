@@ -109,6 +109,7 @@ short intro above its first heading, and the shortest is just a 23-character
 title, so an intro may have to be joined to the section after it.
 Also chunks need to ensure that they hold the context of which area they are
 referring too. without that the structure of what is being explained in each chunk will be oblivious to the model.
+However, the document title line that we will use for chunk context does not count against this.
 
 ---
 

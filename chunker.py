@@ -22,6 +22,7 @@ to it, write down what you saw, and move on. That's a real observation about
 your pipeline, not giving up.
 """
 
+import re
 from dataclasses import dataclass
 
 import config
@@ -82,22 +83,58 @@ def fallback_split(
 
 def split_documents(documents: list[Document]) -> list[Chunk]:
     """
-    Split documents into chunks. ⚠️ REPLACE THE BODY OF THIS IN MILESTONE 3.
+    Split documents into chunks: one `##` section per chunk, title on top.
 
-    Right now it just calls the fallback. That is the plain, generic behaviour
-    the brief is talking about.
+    Every guide in city_guides is a `# Title`, sometimes an intro paragraph,
+    then a run of `## Subheading` sections that each cover one topic. So the
+    document decides where the cuts go, not a character count:
 
-    When you write your own strategy, set `produced_by` to
-    "chunker.py::split_documents" so your README's Sample Chunks section names
-    the right function. `app.py chunks` prints that string for you.
+      - each `##` section becomes one chunk, whole
+      - an intro paragraph above the first `##` becomes its own chunk
+      - a title with nothing under it is not a chunk
+      - every chunk starts with the document's `# Title` line, so a section
+        like "Eat and drink" still says which town it is about
 
-    Things worth thinking about before you write any code:
-      - Are your documents short posts or long guides?
-      - Is the useful information in one sentence, or spread over a paragraph?
-      - Would splitting on paragraph breaks keep more thoughts intact than
-        splitting on a character count?
+    No overlap. Overlap protects a sentence that gets cut at a chunk boundary,
+    and these boundaries only ever fall between sections.
+
+    config.CHUNK_SIZE and config.CHUNK_OVERLAP are not used here. They still
+    drive `fallback_split`, which is kept for comparison.
     """
-    return fallback_split(documents)
+    chunks: list[Chunk] = []
+
+    for doc in documents:
+        # Cut in front of every line that starts with "## ". The first piece is
+        # whatever sits above the first subheading; the rest are the sections.
+        pieces = re.split(r"(?m)^(?=## )", doc.text)
+        first, sections = pieces[0], pieces[1:]
+
+        # Separate the "# Title" line from any intro paragraph under it. A
+        # document with no title keeps all of its text and gets no title line.
+        if first.startswith("# "):
+            title, _, intro = first.partition("\n")
+        else:
+            title, intro = "", first
+
+        # The intro only counts if there is text in it — four of the guides go
+        # straight from the title to the first subheading.
+        bodies = [intro] if intro.strip() else []
+        bodies += sections
+
+        # index counts the chunks actually made, because store.py uses
+        # source#index as the ID and every ID has to be unique.
+        for index, body in enumerate(bodies):
+            text = f"{title.strip()}\n\n{body.strip()}" if title else body.strip()
+            chunks.append(
+                Chunk(
+                    text=text,
+                    source=doc.source,
+                    index=index,
+                    produced_by="chunker.py::split_documents",
+                )
+            )
+
+    return chunks
 
 
 def describe(chunks: list[Chunk]) -> str:

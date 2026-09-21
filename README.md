@@ -31,8 +31,9 @@ Name: Stanluigi Saint-Ruste Corpus:City_Guides
 
 ## Chunking Strategy
 
-**Chunk size:**
-**Overlap:**
+**Chunk size:** Flexible. Each chunk is one `##` section with the document title on top, so the document sets the size. Sections run from 176 to 711 characters, with a median of 297 characters, so we can afford to use this method.
+
+**Overlap:** 0. This is handled because each `##` subheading carries its own context, so each chunk has its own topic and there are no cutoffs.
 
 <!-- What about YOUR documents made you pick these numbers? Short posts and
      long sectioned guides don't want the same chunking, and "800 seemed
@@ -43,6 +44,25 @@ Name: Stanluigi Saint-Ruste Corpus:City_Guides
      more than pretending you got it right first time.
 
      Milestone 3. -->
+
+One thing I noticed is that in the city_guides corpus, there is a heading that applies to the overall document and a subheading that applies to each specific paragraph. So each chunk includes the heading of the document for context, and the corresponding subheading for that paragraph. This is effective because we do not have to concern ourselves much with overlap. The reason is that each subheading holds its own topic within the document. Overlap is only needed when a sentence has the potential of being cut off, but in our case that should not happen if each chunk contains one subheading and the overall document heading.
+
+Some documents go heading -> paragraph -> subheading -> paragraph -> subheading -> paragraph, and so on. Others go heading -> subheading -> paragraph -> subheading -> paragraph. The chunker handles the first case: the intro paragraph becomes its own chunk, and a title with nothing under it is skipped.
+Our config.py has a defined CHUNK_SIZE and CHUNK_OVERLAP, but these do not apply to our chunking mechanism. They are only used when the starter's fallback chunker is called instead.
+
+**Results from my chunker** (`chunker.py::split_documents`):
+
+- 94 chunks
+- 322 characters on average
+- 174 shortest
+- 762 longest
+- Every chunk ends on a finished sentence, with no mixing of two sections
+
+**Starter chunker** (`chunker.py::fallback_split`):
+
+- 51 chunks
+- Shortest 24 characters
+- 41 of 51 chunks have a mixture of two or more sections
 
 ## Sample Chunks
 
@@ -55,29 +75,55 @@ Name: Stanluigi Saint-Ruste Corpus:City_Guides
 
      Milestone 3. -->
 
-**Chunk 1** — source: `` — produced by: ``
+**Chunk 1** — source: `guide_accessibility.md#0` — produced by: `chunker.py::split_documents`
 
 ```
+# Getting around the region with limited mobility
+
+An honest assessment rather than a promotional one. Some of these places are
+difficult and it is better to know in advance.
 ```
 
-**Chunk 2** — source: `` — produced by: ``
+Note: Chunk 1 is an intro chunk, the text above a guide's first `##` heading. It is the weakest kind of chunk my chunker makes, because it cannot answer a question on its own. I kept intro chunks anyway because some of them hold real answers: the intro of `guide_brightwater.md` is the only place in the corpus that gives the town's population (about 40,000), which is one of my test questions.
+
+**Chunk 2** — source: `guide_corry_vale.md#5` — produced by: `chunker.py::split_documents`
 
 ```
+# Corry Vale
+
+## Where to stay
+
+Perhaps thirty beds in the entire valley, spread across two pubs and a handful of farmhouse rooms. In summer these are booked months ahead. Camping is permitted on two marked fields and nowhere else.
 ```
 
-**Chunk 3** — source: `` — produced by: ``
+**Chunk 3** — source: `guide_givens_mill.md#2` — produced by: `chunker.py::split_documents`
 
 ```
+# Givens Mill
+
+## Getting around
+
+Everything is on one street along the river. The mill is at one end and the church at the other, eight minutes apart. The riverside path continues in both directions for as far as you want to walk.
 ```
 
-**Chunk 4** — source: `` — produced by: ``
+**Chunk 4** — source: `guide_kestrelford.md#4` — produced by: `chunker.py::split_documents`
 
 ```
+# Kestrelford
+
+## What to see
+
+The market square on a Saturday morning is the main event and has run continuously since the 1400s. The parish church has a 13th-century tower you can climb for £2. The old trackbed walk runs six miles to the next village along an easy gradient and is the best half-day here.
 ```
 
-**Chunk 5** — source: `` — produced by: ``
+**Chunk 5** — source: `guide_pellew_sands.md#6` — produced by: `chunker.py::split_documents`
 
 ```
+# Pellew Sands
+
+## When to go
+
+June and September for the beach without the crowds. July and August are busy and the town is at its most itself, for better and worse. Winter is bleak, largely closed, and has a following among people who like that sort of thing.
 ```
 
 ## Sample Answer

@@ -1,21 +1,7 @@
 # The Unofficial Guide
 
-Name: Stanluigi Saint-Ruste Corpus:City_Guides
-
-
-> **This file is your submission.** Fill it in as you go — most sections get
-> written during the milestone that produces them, not at the end.
->
-> How the starter works, and every command you'll need, is in `RUNNING.md`.
-> Leave that file alone.
->
-> **Paste everything as text.** No screenshots, no video. A typed table gets
-> full credit; a picture of the same table gets none, because the grader can't
-> read it.
->
-> Delete these instruction blocks as you replace them. The `<!-- -->` comments
-> are notes to you and don't show up when the page renders — you can leave them
-> or remove them.
+Name: Stanluigi Saint-Ruste
+Corpus: city_guides
 
 ---
 
@@ -28,6 +14,8 @@ Name: Stanluigi Saint-Ruste Corpus:City_Guides
      this repo.
 
      Milestone 5. -->
+
+So for this project i chose the city_guides corpus which contains information about areas and the conviences one could find while there. it is 14 travel guides for a fictional region that covers roughly nine towns. the other five guides peratin to eating, walking, transport, seasons and accessibility. Each guide has sections within them that help categorize things for lookup. for example like "Getting there", "Eat and drink", " Where to stay" etc.. . So questions like "How long is the walk to the Elder Ness lighthouse" can be answerd from retrieved documents and names the file  it came from for further confirmation. however, if a question is not within the guides their are gates within the system that refuses to answer the question instead of giving an outright guess.
 
 ## Chunking Strategy
 
@@ -48,6 +36,7 @@ Name: Stanluigi Saint-Ruste Corpus:City_Guides
 One thing I noticed is that in the city_guides corpus, there is a heading that applies to the overall document and a subheading that applies to each specific paragraph. So each chunk includes the heading of the document for context, and the corresponding subheading for that paragraph. This is effective because we do not have to concern ourselves much with overlap. The reason is that each subheading holds its own topic within the document. Overlap is only needed when a sentence has the potential of being cut off, but in our case that should not happen if each chunk contains one subheading and the overall document heading.
 
 Some documents go heading -> paragraph -> subheading -> paragraph -> subheading -> paragraph, and so on. Others go heading -> subheading -> paragraph -> subheading -> paragraph. The chunker handles the first case: the intro paragraph becomes its own chunk, and a title with nothing under it is skipped.
+
 Our config.py has a defined CHUNK_SIZE and CHUNK_OVERLAP, but these do not apply to our chunking mechanism. They are only used when the starter's fallback chunker is called instead.
 
 **Results from my chunker** (`chunker.py::split_documents`):
@@ -176,6 +165,7 @@ What I would get wrong at 0.70: after some more testing, a rephrased version of 
 | Who won the 1994 World Cup? | no | 0.975 |
 | What is the recommended dosage of ibuprofen for a headache? | no | 0.835 |
 | How do I write a for loop in Rust? | no | 0.837 |
+
 ## How I Used AI
 
 <!-- Two specific moments. For each: what you asked for, what came back, and
@@ -188,8 +178,16 @@ What I would get wrong at 0.70: after some more testing, a rephrased version of 
      Milestone 5. -->
 
 **1.**
+I asked claude to basically help me with understanding the gaps for a proper baseline cutoff, syntax issues when explaining things for the criteria and readme.so i can properly convey my thoughts and ideas. moving things for formating etc...
+
+To give an example i wrote a reason for criterion 1  around a "small market in cory vale" that only appeared one document. i asked claude whether it was the kind of answer the rubric wanted. it checked the corpus and came back with problems that my writings had. cory vale had no markets, it had a farm shop. the word market is repeated multiple times within the documents, this would affect the model from retrieving the correct chunks. So after revision i edited my question and changed my expected to match. 
+
+
 
 **2.**
+ I wrote the plan for my chunker in the README first (one ## section per chunk, document title on top, intro paragraph as its own chunk, bare titles skipped, overlap 0) and asked Claude to write split_documents from those notes. The first version it wrote crashed with a SyntaxError, because the \n inside two string literals had been written into the file as real line breaks, and it had to be repaired. Before trusting it I predicted the chunk count from my measurements (84 sections + 10 intros = 94) and the function produced exactly 94. I also had it walk me through the regex and answered three questions about it, including what happens to a corpus with no ## headings at all. I kept my design rather than trying a fancier chunker; there's probably a better method, but this one was mine and the results held up.
+
+
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never

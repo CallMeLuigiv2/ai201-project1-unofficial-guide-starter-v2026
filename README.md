@@ -131,12 +131,21 @@ June and September for the beach without the crowds. July and August are busy an
 <!-- One complete question and answer, pasted as text, with the source line
      visible. Milestone 4. -->
 
-**Question:**
+**Question:** where does every railway line in the region meet at
 
-**Answer:**
+**Answer:** (from `python app.py ask`, one model call)
 
 ```
+  (best distance 0.626, cutoff 0.7)
+
+Based on the provided documents, Marchwood is described as "the regional hub — 180,000 people, the junction everyone changes trains at." (Source: guide_marchwood.md)
+
+Sources retrieved: guide_marchwood.md, guide_regional_transport.md, guide_walking.md
+
+1 model calls this session, 719 tokens (676 in, 43 out)
 ```
+
+This is the question the starter's default cutoff of 0.6 would have refused (best distance 0.626). At 0.70 it passes the gate, the answer names its source in the text, and the fact it quotes is in `guide_marchwood.md`.
 
 **My relevance cutoff:**
 
@@ -149,10 +158,24 @@ June and September for the beach without the crowds. July and August are busy an
 
      Milestone 4. -->
 
+0.70, set in config.py.
+
+I ran the five test questions and the five out-of-scope questions, and wrote down the best distance for each. The two groups showed no overlap. The five in-corpus questions scored between 0.214 and 0.626, while the five out-of-scope questions scored between 0.803 and 0.975, meaning the gap is 0.626 to 0.803, so the cutoff belongs in that range. That is why the starter cutoff had to be adjusted from its default 0.6 to 0.70. The reason for this adjustment is that one of the questions (the railway one in particular) scored 0.626, so with the default at 0.6 the gate refused it even though the answer is within the retrieved chunks. I picked 0.70 rather than the middle of the gap because it leans toward refusing, and a wrong refusal is cheaper than handing the model weak chunks.
+
+What I would get wrong at 0.70: after some more testing, a rephrased version of the railway question ("which city do all the railway lines meet at") scored 0.60, showing me that a different wording of the same question can still get refused. In the other direction, the gate only catches questions from another world. A question about my region that the corpus does not answer, like the price of a Marchwood tram ticket, would score well under 0.70 and get through, and only the grounding prompt in generate.py can stop that.
+
 | Question | In corpus? | Best distance |
 |---|---|---|
-|  |  |  |
-
+| what can be bought at a farm shop in cory vale | yes | 0.495 |
+| how long is the walk in elder ness to the lighthouse | yes | 0.244 |
+| on summer weekends what time do halden bay lots tend to fill up | yes | 0.288 |
+| approximately how many people are in brightwater | yes | 0.214 |
+| where does every railway line in the region meet at | yes | 0.626 |
+| What is the capital of Mongolia? | no | 0.803 |
+| How do I change the oil in a diesel engine? | no | 0.888 |
+| Who won the 1994 World Cup? | no | 0.975 |
+| What is the recommended dosage of ibuprofen for a headache? | no | 0.835 |
+| How do I write a for loop in Rust? | no | 0.837 |
 ## How I Used AI
 
 <!-- Two specific moments. For each: what you asked for, what came back, and

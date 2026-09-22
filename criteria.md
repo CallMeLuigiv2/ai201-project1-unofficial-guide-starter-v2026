@@ -76,6 +76,8 @@ is the one I would watch, since 10 of my 14 guides mention a hospital or a minor
 injuries unit. That is why 4 of 5 and not 5 of 5. I will add the distances I
 measured here after Milestone 4.
 
+After running results the five out of scope questions scored a 0.80 to 0.98,
+with a gap of 0.18.
 ---
 
 ## 4. Something about your chunks

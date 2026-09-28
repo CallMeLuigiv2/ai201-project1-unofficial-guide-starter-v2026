@@ -98,6 +98,9 @@ HEDGE_PHRASES = (
     "does not specify",
     "do not specify",
     "not explicitly state",
+    "not specified",          # added after the probe: "the exact price ... is not specified"
+    "no mention of",
+    "not mentioned",
     "cannot determine",
     "can't determine",
     "unable to determine",

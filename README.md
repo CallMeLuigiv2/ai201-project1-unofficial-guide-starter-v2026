@@ -189,6 +189,10 @@ To give an example i wrote a reason for criterion 1  around a "small market in c
 
 
 
+**3.** (Week 2) Research, gaps, and ideas. After the before run I was stuck. Every criterion passed but the system still hedged on the railway question, and I didn't know what a real fix looked like or what production systems do about this. So I had Claude run deep research on production RAG (Anthropic's contextual retrieval post, RRF and hybrid search, cross-encoder reranking, RAGAS metrics, Hamel Husain's evals FAQ, a paper on RAG and reworded queries) and come back with options and numbers, not just names. Then I asked it to look for gaps in my system that I couldn't see. It tested five in-region questions the guides can't answer and found all five score under my 0.70 cutoff, so the gate can't stop them. It pointed out that none of my five criteria checks whether the answer actually answers the question, which is why the hedge passed everything. It also reworded my five test questions and the distances held, so wording wasn't my problem. From the options it suggested I picked hybrid search because it followed straight from my diagnosis, needed no install or re-index, and I already had a table predicting what it would do. Contextual retrieval, reranking, raising `TOP_K` and a no-hedging prompt all went into What's Still Broken with the reason each one wasn't picked.
+
+**4.** (Week 2) Test runs and tooling. Claude wrote `scorer.py`'s labels from the design we agreed on, wrote `tools/label_run.py` and `tools/probe_unanswerable.py`, benchmarked retrieval on all ten questions before and after hybrid (and the off switch) before a single model call was spent, and then ran the after eval, the probe and the labelling for me. Things it got wrong or that broke, and what changed: the first scorer counted "meets at Brightwater (guide_marchwood.md)" as correct for `expects=marchwood` because the word was inside the filename, so it now strips citations before checking. It ran the starter's staff smoke test to check hybrid search and that overwrote my real index with fake embeddings; it rebuilt the index (same 94 chunks) and re-ran the test in a temp folder. That smoke test also caught hybrid returning chunks out of distance order, which is why the list is sorted nearest-first now. The probe crashed on the first try because the free tier allows 15 calls a minute, not the 30 the starter assumes, so it re-ran after the window. And the probe's one ANSWERED label was a false positive that I caught by reading the answer, not by trusting the tool. Every number in both run logs came from scripts it wrote, and I read all 30 answers myself.
+
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
      claims earns nothing.
@@ -422,11 +426,50 @@ Measurement changes, not system changes: `scorer.py` got a `hedged` label becaus
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. Sampled chunks hold exactly one whole `##` section | 9 of 10 |  |  |  |  |
-| 5. Every number, time and place name in the answer is in the named source | 14 of 15 |  |  |  |  |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Sampled chunks hold exactly one whole `##` section | 9 of 10 | 9/10 | 9/10 | 9/10 | MET |
+| 5. Every number, time and place name in the answer is in the named source | 14 of 15 | 5/5 | 5/5 | 5/5 | MET (15/15) |
+
+Run file: `results/run_2026-09-27_2251_after.md`, produced by `run_eval.py::main`, hybrid search on, caching off, cutoff 0.70, top-k 5. Scored the same way as the before run: criterion 1 with `scorer.py::_in_chunks`, criteria 2 and 5 by script over all 15 answers, criterion 3 from the run file, criterion 4 unchanged because the chunker was not touched. Labels from `tools/label_run.py` are in `results/labels_after.md`: **pass 11, wrong-generation 4, hedged 0** (before: pass 9, wrong-generation 5, hedged 1).
+
+The scorer's per-question table:
+
+```
+| Question | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| what can be bought at a farm shop in cory vale | fail | pass | pass |
+| how long is the walk in elder ness to the lighthouse  | fail | fail | fail |
+| on summer weekends what time do halden bay lots tend to fill up  | pass | pass | pass |
+| approximately how many people are in brightwater | pass | pass | pass |
+| where does every railway line in the region meet at | pass | pass | pass |
+```
+
+The railway question, all three runs, from `generate.py::answer_from_chunks`. This is the question the improvement was for:
+
+```
+run 1:
+Every railway line in the region meets at Marchwood (source: guide_marchwood.md).
+
+run 2:
+Every railway line in the region meets at Marchwood (source: guide_marchwood.md).
+
+run 3:
+According to `guide_marchwood.md`, every railway line in the region meets in Marchwood.
+```
+
+The gate, from `run_eval.py::check_out_of_scope`:
+
+```
+| Out-of-scope question | Best distance | Gate |
+|---|---|---|
+| What is the capital of Mongolia? | 0.803 | refused |
+| How do I change the oil in a diesel engine? | 0.888 | refused |
+| Who won the 1994 World Cup? | 0.975 | refused |
+| What is the recommended dosage of ibuprofen for a headache? | 0.835 | refused |
+| How do I write a for loop in Rust? | 0.836 | refused |
+```
 
 **Did it help?**
 
@@ -436,6 +479,16 @@ Measurement changes, not system changes: `scorer.py` got a `hedged` label becaus
      tell.
 
      Milestone 4. -->
+
+Yes, on the one thing it was aimed at. Before, the railway question hedged in 1 of 3 runs. After, 0 of 3, and all three answers quote the sentence that actually answers it: "Every railway line in the region meets at Marchwood (source: guide_marchwood.md)". Before, even the two answers that didn't hedge only paraphrased the intro chunk ("the junction where everyone changes trains"), because the real sentence was never in the prompt. Now it is.
+
+How I know it's the change and not luck: 0 of 3 after 1 of 3 could happen by chance about 30% of the time, so three runs can't prove it. What I can point at is the mechanism. The "every railway line" chunk was rank 6 before and is rank 4 now, so it's in the prompt, and all three answers use its exact wording. Also the one build check I did before the run (`results/hybrid_smoke_ask_after.md`) came out the same way.
+
+The criteria table didn't move, and it shouldn't have. All five were MET before and the change doesn't touch the gate, the chunks or the sourcing. If the table had moved, something else changed too.
+
+The risk I wrote down didn't happen. Lighthouse, Halden Bay and Brightwater got a different 4th or 5th chunk and no wrong-file citation showed up. Halden Bay now also cites `guide_regional_transport.md`, which really does say "Both Halden Bay lots fill by 10am on summer weekends", so that's an extra correct source, not an error.
+
+The 4 wrong-generation labels are still the `expects` wording on the farm shop and lighthouse questions, same as before, and all of those answers are correct when you read them. The farm shop went fail/pass/fail to fail/pass/pass only because run 3 happened to say "Bread and cheese and little else" word for word. That's noise, not improvement, and I'm not counting it.
 
 ## What's Still Broken
 
@@ -447,9 +500,31 @@ Measurement changes, not system changes: `scorer.py` got a `hedged` label becaus
 
      Milestone 5. -->
 
+Nothing is missed against my five criteria, before or after. That is not the same as nothing being broken.
+
+**1. My criteria can't see a hedge.** The railway hedge in the before run passed all five criteria. The `hedged` label in `scorer.py` catches it now, but a label is not a criterion, and the target I'd want (0 hedges in 15 answers) was never written down before the results, so I can't claim it this unit. Next unit it becomes a criterion. I stopped here because adding a criterion after seeing results is the thing the brief says costs the point.
+
+**2. The gate can't stop in-region questions the guides don't answer.** I ran five of them through the whole pipeline (`results/near_miss_probe_after.md`): a tram ticket price, a bakery opening time, a tour price, a taxi phone number, hotel room counts. All five scored between 0.26 and 0.43, well under the 0.70 cutoff, so the gate passed every one. The grounding prompt declined all five, so today it holds, but it's one layer with nothing behind it. The research explained why no cutoff fixes this: cosine distance can't tell "about what you asked" from "answers what you asked". What I'd try next is a check on the shape of the distances (the gap between rank 1 and rank 5) instead of the top-1 number, which the research found separates the two cases better than a fixed cutoff. I stopped because it would be a second system change.
+
+**3. My probe tool mislabeled one of those five.** It said ANSWERED for the tram ticket, but the actual answer was "the exact price is not specified, but it costs less than two single fares", which is a decline. My hedge phrase list had "does not specify" but not "is not specified". I added it and confirmed it changes none of the 30 labels in the two runs. The probe file keeps its original label so the mistake stays visible.
+
+**4. Two `expects` phrases are written too long** ("bread and cheese and little else", "25-minute walk"), so the scorer false-fails 7 of 30 correct answers across both runs. I didn't change them, that's moving the goalposts. Next unit they're one token each.
+
+**5. Three runs is thin.** 1 of 3 to 0 of 3 is consistent with a fix, not proof of one. I'd run the railway question 10 times. I stopped because of quota: the free tier allows 15 calls a minute for this model, and the starter's `REQUESTS_PER_MINUTE` is 30, which is what crashed my probe the first time (the retry backoff tops out at 8 seconds and the service asked for 50). That's a starter setting, not mine, and I left it under the one-change rule.
+
+**6. Options from the research I didn't take, and why.** Contextual retrieval (Anthropic: a model writes a short context for every chunk before indexing, 49% fewer retrieval failures, 67% with a reranker) would fix "meets here" directly, but it's 94 model calls, a re-index, and different chunk text for criterion 4. A cross-encoder reranker needs the 2 GB sentence-transformers install. Raising `TOP_K` adds a loose chunk to every prompt. Query rewriting (HyDE) didn't apply, my five questions reworded still retrieved fine. Metadata filtering, conversational memory and a second embedding model were last unit's stretch options and are out of scope now.
+
 ## What I'd Do Differently
 
 <!-- Knowing what you know now — which of your five criteria would you write
      differently, and why?
 
      Milestone 5. -->
+
+**Criterion 1.** "The retrieved chunks include one that contains the answer" let the word Marchwood in an intro chunk count. I'd write: for 5 of 5 questions, the chunk containing the sentence that answers the question is retrieved. Under that version the railway question misses before (rank 6) and passes after (rank 4), and the improvement would have shown up in the criteria table instead of only in a scorer label.
+
+**Criterion 3.** I'd swap two of the five out-of-scope questions for in-region questions the guides don't answer. Mongolia and Rust test the easy case. The tram ticket tests the gate that actually matters, and it would have shown me in week 1 that the gate can't do it.
+
+**Criterion 5.** Criteria 2 and 5 both check sourcing and neither checks that the answer answers. I'd make 5 a correctness criterion: for 14 of 15 answers, the answer contains the `expects` phrase and does not decline any part of the question. That's the criterion the hedge would have failed.
+
+**`expects`.** Write it as the shortest thing a right answer has to contain ("little else", "25"), not the corpus's own sentence. Two of my five cost me 7 false fails for nothing.

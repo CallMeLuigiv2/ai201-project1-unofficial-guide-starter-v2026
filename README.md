@@ -402,9 +402,15 @@ Criterion 1. As written it asks whether a retrieved chunk contains the answer, a
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** Hybrid search in `store.py::search`. Week 1 ranked chunks by meaning only (cosine distance). Now each chunk is also ranked by keywords (BM25) and the two rankings get fused by rank (RRF: add up `1/(60 + rank)` from each list, ranks not scores because the two scales don't mix). The top 5 by fused score come back. On purpose, each chunk keeps its cosine distance, the 5 still come back nearest first, and the nearest chunk is always one of the 5, so the gate sees the same number it did in week 1. All ten best distances are identical before and after, and the out of scope questions still get refused. Files touched: `store.py::search` (plus a BM25 cache and one line in `build_index` to clear it) and a `HYBRID_SEARCH` switch in `config.py`; `AI201_HYBRID=0` gives back the week 1 retriever. Chunker, index, cutoff, `TOP_K` and the prompt are untouched. `rank-bm25` was already installed.
 
-**Why I picked it:**
+Measurement changes, not system changes: `scorer.py` got a `hedged` label because the railway hedge had scored `pass`, `tools/label_run.py` re-labels a run with the current scorer (before run re-labeled in `results/labels_before.md`: hedged 1, pass 9, wrong-generation 5), and `tools/probe_unanswerable.py` asks five in-region questions the guides can't answer.
+
+**Why I picked it:** The railway hedge was a retrieval problem. The chunk that literally says "Every railway line in the region meets here" ranked 6th by meaning with `TOP_K` at 5, so the model never saw it. It shares five exact words with the question (every, railway, line, region, meets): by keywords it's 1st, fused it's 2nd. I checked all five questions with `app.py retrieve` before spending a model call: the railway chunk now gets in and the other four stay at rank 1. `TOP_K = 6` would also pull it in, but that adds a sixth loose chunk to every prompt.
+
+**How I got there:** After the before run I was stuck. Every criterion passed but the system still hedged, and I didn't know the right fix or what real systems do about this. So I had Claude run deep research on production RAG and bring back options. Hybrid search is basically the standard setup. Anthropic's contextual retrieval (a model writes a short context for each chunk before indexing) cuts retrieval failures by 49%, and 67% with a reranker, but it costs 94 model calls, a re-index, and changes the chunk text criterion 4 measures. Reranking is worth 5 to 15 points but needs the 2 GB sentence-transformers install. Query rewriting (HyDE) fixes wording mismatch, but Claude tested my five questions reworded and the distances held. A prompt that bans hedging got ruled out, the hedge was honest for what the model saw. The research also found two gaps I hadn't seen: my gate can't stop in-region questions the guides don't answer (five tested, all under 0.70), and none of my criteria checks whether the answer actually answers. Hybrid won because it follows straight from the diagnosis, needs no install or re-index, and I already had a table predicting what it should do. The rest went to What's Still Broken.
+
+**What I expect, written before the run:** Criteria 1 to 5 stay MET with the same numbers. What should move is `hedged` on the railway question, 1 of 3 to 0 of 3; three runs can't prove a fix, only fail to contradict it. One build check exists (`results/hybrid_smoke_ask_after.md`): the "every railway line" chunk was in the prompt and the answer was "Every railway line in the region meets at Marchwood (guide_marchwood.md)", 18 output tokens vs 43 for the hedged one. Risk: lighthouse, Halden Bay and Brightwater got a different 4th or 5th chunk than before, so a new wrong-file citation on criterion 5 would come from that.
 
 <!-- Connect it to a specific diagnosis above in one sentence. If you can't,
      you picked a fix because it sounded impressive. -->
@@ -419,8 +425,8 @@ Criterion 1. As written it asks whether a retrieved chunk contains the answer, a
 | 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
 | 2. Every answer names a source | 5 of 5 |  |  |  |  |
 | 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 4. Sampled chunks hold exactly one whole `##` section | 9 of 10 |  |  |  |  |
+| 5. Every number, time and place name in the answer is in the named source | 14 of 15 |  |  |  |  |
 
 **Did it help?**
 

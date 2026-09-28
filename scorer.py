@@ -19,10 +19,16 @@ needs:
                       answer doesn't contain it — the model had the fact
     wrong-retrieval   the expected phrase was in NONE of the retrieved chunks —
                       the model never had a chance
+    hedged            the fact is there, but the model also says it can't
+                      answer ("I do not have enough information to...",
+                      "the documents do not specifically state..."). Added
+                      in week 2 after the before run: the gate's hard refusal
+                      was caught, the model's own soft refusal was not.
     refused           the relevance gate refused the question
 
 Precedence when more than one applies: refused > wrong-retrieval >
-wrong-generation > unsourced > pass. A wrong answer's sourcing is not reported.
+wrong-generation > hedged > unsourced > pass. A wrong answer's sourcing is
+not reported.
 
 "Fair" means both sides are normalized the same way before comparing:
 lowercase, commas dropped inside numbers (40,000 == 40000), other punctuation
@@ -80,12 +86,41 @@ def _sourced(answer: str, results) -> bool:
     return any(stem and stem in text for stem in _stems(results))
 
 
+# Phrases the model uses when it declines part or all of a question. Compared
+# after normalization, so punctuation and case don't matter. Kept short on
+# purpose: every phrase here was seen in a real answer or is a plain variant
+# of one, and a longer list would start matching ordinary sentences.
+HEDGE_PHRASES = (
+    "not enough information",
+    "do not have enough information",
+    "don't have enough information",
+    "not specifically state",
+    "does not specify",
+    "do not specify",
+    "not explicitly state",
+    "cannot determine",
+    "can't determine",
+    "unable to determine",
+    "cannot answer",
+    "can't answer",
+    "unable to answer",
+)
+
+
+def _hedged(answer: str) -> bool:
+    """Does the answer contain a soft refusal written by the model itself?"""
+    text = _normalize(answer)
+    return any(_normalize(p) in text for p in HEDGE_PHRASES)
+
+
 def verdict(question: str, expects: str, answer: str, results) -> str:
     """One label per answer. See the module docstring for what each means."""
     if REFUSAL.lower() in answer.lower():
         return "refused"
     if not _correct(expects, answer, results):
         return "wrong-generation" if _in_chunks(expects, results) else "wrong-retrieval"
+    if _hedged(answer):
+        return "hedged"
     if not _sourced(answer, results):
         return "unsourced"
     return "pass"

@@ -45,6 +45,13 @@ TOP_K = 5               # how many chunks to pull back per question
 # Most corpora land somewhere between 0.45 and 0.75.
 THRESHOLD = 0.7
 
+# ─── Hybrid search (week 2 improvement) ──────────────────────────────────────
+# When on, `store.py::search` ranks every chunk twice — by cosine distance and
+# by BM25 keyword score — and fuses the two rankings by rank. When off, search
+# is the week-1 semantic-only retriever. Set AI201_HYBRID=0 in the environment
+# to reproduce the week-1 behaviour without editing code.
+HYBRID_SEARCH = os.getenv("AI201_HYBRID", "1") != "0"
+
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 # Embeddings run on your own machine and cost no API quota.

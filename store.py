@@ -18,6 +18,7 @@ rest of the project if they were wrong:
 """
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 
@@ -154,6 +155,7 @@ def build_index(
         client.delete_collection(name)
     except Exception:
         pass
+    _bm25_cache.pop(name, None)
 
     collection = client.create_collection(
         name=name,
@@ -178,31 +180,37 @@ def build_index(
     return len(chunks)
 
 
-def search(
-    question: str,
-    top_k: int | None = None,
-    corpus: str | None = None,
-    variant: str = "default",
-) -> list[Result]:
+_bm25_cache: dict[str, tuple] = {}
+
+
+def _tokens(text: str) -> list[str]:
+    """Words for keyword search: lowercase, letters and digits only."""
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _bm25_index(collection):
+    """A BM25 index over every chunk in a collection, built once and kept.
+
+    Week 2 improvement. The index is small (94 chunks for city_guides), so it
+    is rebuilt from the collection whenever the chunk count changes and
+    dropped whenever `build_index` runs.
     """
-    Retrieve the chunks closest in meaning to a question.
+    from rank_bm25 import BM25Okapi
 
-    Returns them nearest-first, each with its distance.
-    """
-    top_k = top_k or config.TOP_K
-    name = config.collection_name(corpus, variant)
+    count = collection.count()
+    cached = _bm25_cache.get(collection.name)
+    if cached is not None and cached[0] == count:
+        return cached[1], cached[2]
 
-    try:
-        collection = _client().get_collection(name)
-    except Exception as exc:
-        raise RuntimeError(
-            f"No index called '{name}'. Run `python app.py index` first."
-        ) from exc
+    got = collection.get(include=["documents"])
+    bm25 = BM25Okapi([_tokens(t) for t in got["documents"]])
+    _bm25_cache[collection.name] = (count, bm25, got["ids"])
+    return bm25, got["ids"]
 
-    raw = collection.query(
-        query_embeddings=embed([question]),
-        n_results=min(top_k, collection.count()),
-    )
+
+def _semantic(collection, question: str, n: int) -> list[Result]:
+    """The week-1 retriever: the `n` nearest chunks by cosine distance."""
+    raw = collection.query(query_embeddings=embed([question]), n_results=n)
 
     results: list[Result] = []
     for text, meta, distance in zip(
@@ -218,6 +226,83 @@ def search(
             )
         )
     return results
+
+
+def search(
+    question: str,
+    top_k: int | None = None,
+    corpus: str | None = None,
+    variant: str = "default",
+) -> list[Result]:
+    """
+    Retrieve the chunks most relevant to a question.
+
+    Week 1 (config.HYBRID_SEARCH off): the `top_k` nearest chunks by cosine
+    distance, nearest first.
+
+    Week 2 (config.HYBRID_SEARCH on): every chunk is ranked twice, once by
+    cosine distance and once by BM25 keyword score, and the two rankings are
+    fused with reciprocal rank fusion: score = 1/(60 + semantic rank) +
+    1/(60 + keyword rank). Ranks are fused rather than scores because a
+    cosine distance and a BM25 score are on different scales and cannot be
+    added. The chunk that answers "where does every railway line meet" shares
+    five exact words with the question but ranked 6th by meaning alone; by
+    keywords it ranks 1st, and fused it ranks 2nd.
+
+    Three things are deliberately unchanged from week 1. Each Result still
+    carries its cosine distance. The list still comes back nearest-first;
+    fusion only decides which chunks are in it. And the nearest chunk by
+    cosine distance is always in the list, so the relevance gate, which
+    compares the best distance to THRESHOLD, sees exactly the number it was
+    calibrated on.
+    """
+    top_k = top_k or config.TOP_K
+    name = config.collection_name(corpus, variant)
+
+    try:
+        collection = _client().get_collection(name)
+    except Exception as exc:
+        raise RuntimeError(
+            f"No index called '{name}'. Run `python app.py index` first."
+        ) from exc
+
+    total = collection.count()
+    n = min(top_k, total)
+
+    if not config.HYBRID_SEARCH:
+        return _semantic(collection, question, n)
+
+    # 1. Rank every chunk by meaning, so each one has a cosine distance.
+    semantic = _semantic(collection, question, total)
+    by_label = {r.label: r for r in semantic}
+    sem_rank = {r.label: i for i, r in enumerate(semantic, 1)}
+
+    # 2. Rank every chunk by keywords. Chunks sharing no words with the
+    #    question all score 0; they get one shared rank rather than an
+    #    arbitrary order.
+    bm25, ids = _bm25_index(collection)
+    scores = bm25.get_scores(_tokens(question))
+    nonzero = sorted((i for i in range(len(ids)) if scores[i] > 0), key=lambda i: -scores[i])
+    bm_rank = {ids[i]: r for r, i in enumerate(nonzero, 1)}
+    zero_rank = len(nonzero) + 1
+
+    # 3. Fuse by rank. Ties fall back to semantic order.
+    k = 60
+    fused = {
+        label: 1 / (k + sem_rank[label]) + 1 / (k + bm_rank.get(label, zero_rank))
+        for label in sem_rank
+    }
+    picked = sorted(sem_rank, key=lambda label: -fused[label])[:n]
+
+    # 4. Keep the gate honest: the nearest chunk is always returned.
+    nearest = semantic[0].label
+    if nearest not in picked:
+        picked[-1] = nearest
+
+    # Fusion decides WHICH chunks come back; cosine distance decides their
+    # order, nearest first, exactly as in week 1. Everything downstream
+    # (the gate, `app.py retrieve`, the smoke test) reads them that way.
+    return sorted((by_label[label] for label in picked), key=lambda r: r.distance)
 
 
 def index_exists(corpus: str | None = None, variant: str = "default") -> bool:
